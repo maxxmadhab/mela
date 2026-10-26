@@ -6,4 +6,5 @@ export const config = {
   webOrigin: process.env.WEB_ORIGIN || 'http://localhost:5173',
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  databaseUrl: process.env.DATABASE_URL || '',
 };
