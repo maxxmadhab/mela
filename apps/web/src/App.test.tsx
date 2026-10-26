@@ -16,12 +16,12 @@ describe('MELA Web App - Phase 1 Routing and Layout', () => {
     expect(within(nav).getByRole('link', { name: 'Cart' })).toBeInTheDocument();
   });
 
-  it('renders our story section and craft chapters', () => {
+  it('renders our story section and craft chapters', async () => {
     render(<App />);
     expect(screen.getByText('Our story')).toBeInTheDocument();
     expect(screen.getByText(/Made in the hills/i)).toBeInTheDocument();
     expect(screen.getByText('Crafts & raw materials')).toBeInTheDocument();
-    const kulluElements = screen.getAllByText('Kullu Wool');
+    const kulluElements = await screen.findAllByText('Kullu Wool');
     expect(kulluElements.length).toBeGreaterThanOrEqual(1);
   });
 
