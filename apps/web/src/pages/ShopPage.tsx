@@ -1,35 +1,121 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Media } from '../components/Media';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../components/Toast';
-import { Product } from '../types';
+import { supabase } from '../lib/supabase';
+import { Product, Category } from '../types';
 
-const INITIAL_PRODUCTS: Product[] = [
-  { id: 'p1', slug: 'kullu-wool-shawl', name: 'Kullu Wool Shawl', description: 'Traditional Kullu handloom shawl', price_inr: 4800, stock: 5, category_id: 'textiles', artisan_id: 'a1', image_url: null, featured: true, active: true, color_start: '#B96D52', color_end: '#4b3a33' },
-  { id: 'p2', slug: 'kinnauri-pattern-stole', name: 'Kinnauri Pattern Stole', description: 'Intricate woven stole from Kalpa', price_inr: 3600, stock: 8, category_id: 'textiles', artisan_id: 'a2', image_url: null, featured: true, active: true, color_start: '#74765B', color_end: '#2c3633' },
-  { id: 'p3', slug: 'chamba-rumal-panel', name: 'Chamba Rumal Panel', description: 'Hand embroidered double satin stitch cloth', price_inr: 5200, stock: 2, category_id: 'textiles', artisan_id: 'a3', image_url: null, featured: true, active: true, color_start: '#D8C9B3', color_end: '#B96D52' },
-  { id: 'p4', slug: 'deodar-carved-box', name: 'Deodar Carved Box', description: 'Fragrant cedar hand-carved box', price_inr: 2900, stock: 4, category_id: 'woodcraft', artisan_id: 'a4', image_url: null, featured: false, active: true, color_start: '#8C5D4D', color_end: '#282722' },
-  { id: 'p5', slug: 'ringal-bamboo-basket', name: 'Ringal Bamboo Basket', description: 'Woven wild mountain bamboo basket', price_inr: 1400, stock: 12, category_id: 'basketry', artisan_id: 'a5', image_url: null, featured: false, active: true, color_start: '#a39a6a', color_end: '#74765B' },
-  { id: 'p6', slug: 'hemp-fibre-bag', name: 'Hemp Fibre Bag', description: 'Natural high altitude hemp tote', price_inr: 2200, stock: 6, category_id: 'textiles', artisan_id: 'a6', image_url: null, featured: false, active: true, color_start: '#c9c3b6', color_end: '#74765B' },
-  { id: 'p7', slug: 'pahari-wool-cap', name: 'Pahari Wool Cap', description: 'Classic Himachal woolen cap', price_inr: 900, stock: 15, category_id: 'textiles', artisan_id: 'a7', image_url: null, featured: false, active: true, color_start: '#4b5a57', color_end: '#1f2a2e' },
-  { id: 'p8', slug: 'walnut-wood-bowl', name: 'Walnut Wood Bowl', description: 'Turned and hand-sanded walnut bowl', price_inr: 2400, stock: 3, category_id: 'woodcraft', artisan_id: 'a8', image_url: null, featured: false, active: true, color_start: '#6b4a3a', color_end: '#282722' },
-];
+const PRODUCT_PALETTES: Record<string, [string, string]> = {
+  'kullu-wool-shawl': ['#B96D52', '#4b3a33'],
+  'kinnauri-pattern-stole': ['#74765B', '#2c3633'],
+  'chamba-rumal-panel': ['#D8C9B3', '#B96D52'],
+  'deodar-carved-box': ['#8C5D4D', '#282722'],
+  'ringal-bamboo-basket': ['#a39a6a', '#74765B'],
+  'hemp-fibre-bag': ['#c9c3b6', '#74765B'],
+  'pahari-wool-cap': ['#4b5a57', '#1f2a2e'],
+  'walnut-wood-bowl': ['#6b4a3a', '#282722'],
+};
 
 export const ShopPage: React.FC = () => {
-  const [filter, setFilter] = useState('All');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [sortOption, setSortOption] = useState<string>('featured');
+  const [isLoading, setIsLoading] = useState(true);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
   const { addToCart } = useCart();
   const { showToast } = useToast();
+  const modalRef = useRef<HTMLDivElement>(null);
 
-  const filteredProducts = INITIAL_PRODUCTS.filter((p) => {
-    if (filter === 'All') return true;
-    if (filter === 'Textiles') return p.category_id === 'textiles';
-    if (filter === 'Woodcraft') return p.category_id === 'woodcraft';
-    if (filter === 'Basketry') return p.category_id === 'basketry';
-    return true;
+  // Load categories and products
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadData() {
+      try {
+        setIsLoading(true);
+
+        // Fetch categories
+        const { data: catData } = await supabase
+          .from('categories')
+          .select('*')
+          .order('sort_order', { ascending: true });
+
+        if (catData && isMounted) {
+          setCategories(catData as Category[]);
+        }
+
+        // Fetch products
+        let query = supabase
+          .from('products')
+          .select(`
+            id,
+            slug,
+            name,
+            description,
+            price_inr,
+            stock,
+            image_url,
+            featured,
+            active,
+            category_id,
+            artisan_id,
+            category:categories(id, name),
+            artisan:artisans(id, name, village, bio)
+          `)
+          .eq('active', true);
+
+        if (sortOption === 'price_asc') {
+          query = query.order('price_inr', { ascending: true });
+        } else if (sortOption === 'price_desc') {
+          query = query.order('price_inr', { ascending: false });
+        } else {
+          query = query
+            .order('featured', { ascending: false })
+            .order('created_at', { ascending: false });
+        }
+
+        const { data: prodData, error } = await query;
+        if (!error && prodData && isMounted) {
+          setProducts(prodData as any);
+        }
+      } catch (err) {
+        console.error('Failed to load catalogue:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [sortOption]);
+
+  // Keyboard accessibility for modal (Esc to close, Trap focus)
+  useEffect(() => {
+    if (!quickViewProduct) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setQuickViewProduct(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [quickViewProduct]);
+
+  // Filter products by selected category
+  const filteredProducts = products.filter((p) => {
+    if (activeCategory === 'All') return true;
+    return p.category?.name?.toLowerCase() === activeCategory.toLowerCase();
   });
 
   const handleAddToCart = (product: Product) => {
+    if (product.stock <= 0) return;
     addToCart(product);
     showToast(`${product.name} added to cart`);
     if (quickViewProduct) {
@@ -40,109 +126,182 @@ export const ShopPage: React.FC = () => {
   return (
     <div className="page">
       <div className="eyebrow">Shop</div>
-      <h1 className="big">Direct from<br />the makers.</h1>
+      <h1 className="big">
+        Direct from<br />
+        the makers.
+      </h1>
 
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '30px 0' }}>
-        {['All', 'Textiles', 'Woodcraft', 'Basketry'].map((cat) => (
+      {/* Filter and Sort Toolbar */}
+      <div className="filters-bar">
+        <div className="category-filters" role="toolbar" aria-label="Category filters">
           <button
-            key={cat}
-            onClick={() => setFilter(cat)}
-            className={`btn ${filter === cat ? 'fill' : ''}`}
-            style={{ padding: '8px 20px', fontSize: '11px' }}
+            type="button"
+            className={`filter-pill ${activeCategory === 'All' ? 'active' : ''}`}
+            onClick={() => setActiveCategory('All')}
           >
-            {cat}
+            All
           </button>
-        ))}
-      </div>
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              className={`filter-pill ${activeCategory === cat.name ? 'active' : ''}`}
+              onClick={() => setActiveCategory(cat.name)}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-          gap: '28px',
-        }}
-      >
-        {filteredProducts.map((p) => (
-          <div
-            key={p.id}
-            onClick={() => setQuickViewProduct(p)}
-            className="form-card"
-            style={{
-              padding: 0,
-              cursor: 'pointer',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
+        <div>
+          <label htmlFor="shop-sort" style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.12em', opacity: 0.7, marginRight: '8px' }}>
+            Sort:
+          </label>
+          <select
+            id="shop-sort"
+            className="sort-select"
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value)}
           >
-            <Media
-              label={p.name}
-              colorStart={p.color_start}
-              colorEnd={p.color_end}
-              aspectRatio="3/4"
-            />
-            <div style={{ padding: '16px 18px 20px' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '4px' }}>{p.name}</h3>
-              <div style={{ fontSize: '12px', opacity: 0.65 }}>Pahadi handcraft</div>
-              <div style={{ marginTop: '8px', fontWeight: 500, color: 'var(--terracotta)' }}>
-                ₹{p.price_inr.toLocaleString('en-IN')}
-              </div>
-            </div>
-          </div>
-        ))}
+            <option value="featured">Featured first</option>
+            <option value="price_asc">Price: Low to high</option>
+            <option value="price_desc">Price: High to low</option>
+          </select>
+        </div>
       </div>
 
-      {/* Quick view modal */}
+      {/* Product Grid */}
+      {isLoading ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.6 }}>
+          <div className="eyebrow">Loading catalogue...</div>
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', opacity: 0.7 }}>
+          <p>No pieces found in this category.</p>
+        </div>
+      ) : (
+        <div className="pgrid">
+          {filteredProducts.map((product) => {
+            const palette = PRODUCT_PALETTES[product.slug] || ['#74765B', '#2c3633'];
+            const isOutOfStock = product.stock <= 0;
+
+            return (
+              <div
+                key={product.id}
+                className="product-card rv in"
+                onClick={() => setQuickViewProduct(product)}
+                tabIndex={0}
+                role="button"
+                aria-label={`View ${product.name}`}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setQuickViewProduct(product);
+                  }
+                }}
+              >
+                {isOutOfStock && (
+                  <span className="out-of-stock-badge">Out of stock</span>
+                )}
+
+                <Media
+                  src={product.image_url}
+                  label={product.name}
+                  colorStart={palette[0]}
+                  colorEnd={palette[1]}
+                  aspectRatio="3/4"
+                />
+
+                <div className="card-info">
+                  <h3>{product.name}</h3>
+                  <div className="byline">
+                    by {product.artisan?.name || 'Pahadi Maker'} · {product.artisan?.village || 'Himachal'}
+                  </div>
+                  <div className="price-tag">
+                    ₹{product.price_inr.toLocaleString('en-IN')}
+                  </div>
+                  <div className="hover-hint">
+                    Click for a closer look, then add to cart.
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Quick View Modal */}
       {quickViewProduct && (
         <div
+          className="modal-overlay"
           role="dialog"
           aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 70,
-            display: 'grid',
-            placeItems: 'center',
-            backgroundColor: 'rgba(20, 19, 16, 0.65)',
-            backdropFilter: 'blur(8px)',
-            padding: '20px',
-          }}
+          aria-labelledby="modal-product-title"
           onClick={() => setQuickViewProduct(null)}
         >
           <div
+            ref={modalRef}
+            className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-              width: 'min(960px, 100%)',
-              maxHeight: '90vh',
-              background: 'var(--paper)',
-              borderRadius: '8px',
-              overflow: 'hidden',
-            }}
           >
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => setQuickViewProduct(null)}
+              aria-label="Close details"
+            >
+              ×
+            </button>
+
+            {/* Large Product Media */}
             <Media
-              label="Large view"
-              colorStart={quickViewProduct.color_start}
-              colorEnd={quickViewProduct.color_end}
-              style={{ minHeight: '360px' }}
+              src={quickViewProduct.image_url}
+              label={quickViewProduct.name}
+              colorStart={PRODUCT_PALETTES[quickViewProduct.slug]?.[0] || '#74765B'}
+              colorEnd={PRODUCT_PALETTES[quickViewProduct.slug]?.[1] || '#2c3633'}
+              style={{ minHeight: '380px', height: '100%' }}
             />
-            <div style={{ padding: '42px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '14px' }}>
-              <div className="eyebrow">{quickViewProduct.category_id}</div>
-              <h2 style={{ fontSize: '36px' }}>{quickViewProduct.name}</h2>
-              <div style={{ fontSize: '26px', fontWeight: 600, color: 'var(--terracotta)' }}>
+
+            {/* Modal Body Info */}
+            <div className="modal-body">
+              <div className="eyebrow" style={{ marginBottom: 0 }}>
+                {quickViewProduct.category?.name || 'Handcraft'} · {quickViewProduct.artisan?.village || 'Himachal'}
+              </div>
+
+              <h2 id="modal-product-title" style={{ fontSize: '34px', lineHeight: 1.1 }}>
+                {quickViewProduct.name}
+              </h2>
+
+              <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--terracotta)' }}>
                 ₹{quickViewProduct.price_inr.toLocaleString('en-IN')}
               </div>
-              <p style={{ opacity: 0.8, fontSize: '14px' }}>
-                Handmade by regional Pahadi masters. Genuine natural materials and generational techniques.
+
+              <p style={{ opacity: 0.8, fontSize: '14px', lineHeight: 1.6 }}>
+                {quickViewProduct.description ||
+                  `Handmade by ${quickViewProduct.artisan?.name || 'regional artisans'}. Pure native materials shaped through generational hill traditions.`}
               </p>
-              <div style={{ display: 'flex', gap: '14px', marginTop: '12px' }}>
-                <button className="btn fill" onClick={() => handleAddToCart(quickViewProduct)}>
-                  Add to cart
+
+              <div style={{ fontSize: '13px', opacity: 0.7 }}>
+                <strong>Maker:</strong> {quickViewProduct.artisan?.name} ({quickViewProduct.artisan?.village})
+              </div>
+
+              <div style={{ display: 'flex', gap: '14px', marginTop: '14px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn fill"
+                  disabled={quickViewProduct.stock <= 0}
+                  onClick={() => handleAddToCart(quickViewProduct)}
+                >
+                  {quickViewProduct.stock <= 0 ? 'Out of stock' : 'Add to cart'}
                 </button>
-                <button className="btn" onClick={() => setQuickViewProduct(null)}>
-                  Close
-                </button>
+
+                <Link
+                  to={`/shop/${quickViewProduct.slug}`}
+                  className="btn"
+                  onClick={() => setQuickViewProduct(null)}
+                >
+                  View full story
+                </Link>
               </div>
             </div>
           </div>
