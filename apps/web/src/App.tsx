@@ -16,6 +16,8 @@ import { AdminPage } from './pages/AdminPage';
 import { AccountPage } from './pages/AccountPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
+import { ProtectedRoute, AdminRoute } from './components/RoleGuard';
+
 export const App: React.FC = () => {
   return (
     <ToastProvider>
@@ -32,8 +34,22 @@ export const App: React.FC = () => {
                 <Route path="login" element={<LoginPage />} />
                 <Route path="signup" element={<SignupPage />} />
                 <Route path="admin/login" element={<AdminLoginPage />} />
-                <Route path="admin" element={<AdminPage />} />
-                <Route path="account" element={<AccountPage />} />
+                <Route
+                  path="admin"
+                  element={
+                    <AdminRoute>
+                      <AdminPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="account"
+                  element={
+                    <ProtectedRoute>
+                      <AccountPage />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
