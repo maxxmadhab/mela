@@ -31,8 +31,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  // Keep a map of loaded products in memory for cart rendering
-  const [productMap, setProductMap] = useState<Record<string, Product>>({});
+  // Keep a map of loaded products in memory & localStorage for cart rendering
+  const [productMap, setProductMap] = useState<Record<string, Product>>(() => {
+    try {
+      const stored = localStorage.getItem('mela-product-cache');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
 
   useEffect(() => {
     try {
@@ -42,28 +49,40 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [cart]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('mela-product-cache', JSON.stringify(productMap));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [productMap]);
+
   const cartCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
     setProductMap((prev) => ({ ...prev, [product.id]: product }));
     setCart((prev) => {
       const current = prev[product.id] || 0;
-      const next = current + quantity;
+      const maxStock = product.stock ?? 999;
+      const next = Math.min(current + quantity, maxStock);
       return { ...prev, [product.id]: next };
     });
   }, []);
 
   const updateQuantity = useCallback((productId: string, delta: number) => {
     setCart((prev) => {
-      const nextQty = (prev[productId] || 0) + delta;
+      const current = prev[productId] || 0;
+      const prod = productMap[productId];
+      const maxStock = prod?.stock ?? 999;
+      const nextQty = current + delta;
       if (nextQty <= 0) {
         const copy = { ...prev };
         delete copy[productId];
         return copy;
       }
-      return { ...prev, [productId]: nextQty };
+      return { ...prev, [productId]: Math.min(nextQty, maxStock) };
     });
-  }, []);
+  }, [productMap]);
 
   const removeFromCart = useCallback((productId: string) => {
     setCart((prev) => {

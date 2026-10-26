@@ -6,6 +6,7 @@ import { authenticate, requireAuth, requireAdmin, AuthenticatedRequest } from '.
 import { productsRouter } from './routes/products.js';
 import { craftsRouter } from './routes/crafts.js';
 import { categoriesRouter } from './routes/categories.js';
+import { ordersRouter } from './routes/orders.js';
 
 export const app = express();
 
@@ -30,6 +31,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.use('/api/products', productsRouter);
 app.use('/api/crafts', craftsRouter);
 app.use('/api/categories', categoriesRouter);
+app.use('/api/orders', ordersRouter);
 
 // GET /api/me -> Current user + role
 app.get('/api/me', requireAuth as express.RequestHandler, (req: AuthenticatedRequest, res: Response) => {
